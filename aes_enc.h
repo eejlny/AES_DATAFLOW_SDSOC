@@ -39,6 +39,7 @@ either expressed or implied, of the FreeBSD Project*/
 typedef ap_uint<128> data_t;
 typedef hls::stream<data_t> data_stream_t;
 const unsigned int INI_VAL=1;
+const unsigned int CU=4;
 
 void aes_enc_sw(uint8_t *state,uint8_t *cipher,uint8_t ekey[240],unsigned int block_size);
 void aes_enc(data_t *state,data_t *cipher,uint8_t ekey[240],unsigned int block_size);

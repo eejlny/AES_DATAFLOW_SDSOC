@@ -17,7 +17,7 @@ uint8_t key[32] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0
 
 #define standalone 1
 
-void read_input(uint8_t *state, char *file, unsigned int block_size)
+void read_input(uint8_t *state, char *file, unsigned int& block_size)
 {
 
 	#ifdef standalone
@@ -35,6 +35,8 @@ void read_input(uint8_t *state, char *file, unsigned int block_size)
 		  printf("file could not be opened for reading\n");
 		   exit(1);
 	   }
+	   fseek(fp, 0L, SEEK_END);
+	   block_size = ftell(fp);
 	   fread(state, block_size, 1, fp); // Read in the entire block
 	   fclose(fp);
    #endif
@@ -62,21 +64,15 @@ void keyexpansion(uint8_t key[32], uint8_t ekey[240]);
 int main(int argc, char* argv[])
 {
 	uint8_t x,y,i;
+	//const unsigned int block_size=1000000;
 
-	const unsigned int block_size=1000000;
+	unsigned int block_size=1000000;
 	uint8_t *state;
 	uint8_t *cipher;
 
 	char *ifile, *ofile;
 
 	printf("Launching AES\n");
-
-	uint8_t *ekey;
-	ekey = (uint8_t *) sds_alloc(240 *sizeof(uint8_t));
-	state = (uint8_t *) sds_alloc(block_size * sizeof(uint8_t));
-	cipher = (uint8_t *) sds_alloc(block_size * sizeof(uint8_t));
-
-	keyexpansion(key,ekey);
 
     #ifdef standalone
 	#else
@@ -85,39 +81,72 @@ int main(int argc, char* argv[])
 			printf("incorrect number of inputs: aes in_file out_file\n");
 			exit(1);
 		}
+		ifile = argv[1];
+		ofile = argv[2];
+
     #endif
 
-	ifile = argv[1];
-	ofile = argv[2];
+
+
+
+	uint8_t *ekey;
+    state = (uint8_t *) sds_alloc(block_size * sizeof(uint8_t));
+    if(!state)
+   	{
+   			printf("could not allocate state memory\n");
+   			exit(0);
+   	}
+	ekey = (uint8_t *) sds_alloc(240 *sizeof(uint8_t));
+	cipher = (uint8_t *) sds_alloc(block_size * sizeof(uint8_t));
+	if(!cipher)
+	{
+		printf("could not allocate cipher memory\n");
+		exit(0);
+	}
 
 	read_input(state, ifile,block_size);
 
+	printf("block_size is %d\n",block_size);
+
+	keyexpansion(key,ekey);
+
+
 	TIME_STAMP_INIT_HW
 	int block_count = block_size/16;
+	int new_block_size = block_count*16;
+	printf("new_block_size is %d\n",new_block_size);
 	data_t * sub_state;
 	data_t * sub_cipher;
-    #pragma SDS resource(1)
-    #pragma SDS async(1)
-	aes_enc((data_t*)state,(data_t*)cipher,ekey,block_size/4);
-	#pragma SDS resource(2)
- 	#pragma SDS async(2)
-	sub_state = (data_t*)state + block_count;
-	sub_cipher = (data_t*)cipher + block_count;
-	aes_enc(sub_state,sub_cipher,ekey,block_size/4);
-	#pragma SDS resource(3)
- 	#pragma SDS async(3)
-	sub_state = (data_t*)state + 2*block_count;
-	sub_cipher = (data_t*)cipher + 2*block_count;
-	aes_enc(sub_state,sub_cipher,ekey,block_size/4);
-	#pragma SDS resource(4)
- 	#pragma SDS async(4)
-	sub_state = (data_t*)state + 3*block_count;
-	sub_cipher = (data_t*)cipher + 3*block_count;
-	aes_enc(sub_state,sub_cipher,ekey,block_size/4);
-    #pragma SDS wait(1)
-    #pragma SDS wait(2)
-    #pragma SDS wait(3)
-    #pragma SDS wait(4)
+    if (CU==1) {
+    	printf("Using 1 CU\n");
+        aes_enc((data_t *)state,(data_t*)cipher,ekey,new_block_size);
+    }
+    else
+    {
+     printf("Using 4 CU\n");
+     #pragma SDS resource(1)
+     #pragma SDS async(1)
+	 aes_enc((data_t*)state,(data_t*)cipher,ekey,new_block_size/4);
+	 #pragma SDS resource(2)
+ 	 #pragma SDS async(2)
+	 sub_state = (data_t*)(state + new_block_size/4);
+	 sub_cipher = (data_t*)(cipher + new_block_size/4);
+	 aes_enc(sub_state,sub_cipher,ekey,new_block_size/4);
+	 #pragma SDS resource(3)
+ 	 #pragma SDS async(3)
+	 sub_state = (data_t*)(state + 2*new_block_size/4);
+	 sub_cipher = (data_t*)(cipher + 2*new_block_size/4);
+	 aes_enc(sub_state,sub_cipher,ekey,new_block_size/4);
+	 #pragma SDS resource(4)
+ 	 #pragma SDS async(4)
+	 sub_state = (data_t*)(state + 3*new_block_size/4);
+	 sub_cipher = (data_t*)(cipher + 3*new_block_size/4);
+	 aes_enc(sub_state,sub_cipher,ekey,new_block_size/4);
+     #pragma SDS wait(1)
+     #pragma SDS wait(2)
+     #pragma SDS wait(3)
+     #pragma SDS wait(4)
+    }
 //	aes_enc((data_t*)state,(data_t*)cipher,ekey,block_size);
 	TIME_STAMP_HW
 
@@ -138,12 +167,12 @@ int main(int argc, char* argv[])
 
 
 	TIME_STAMP_INIT_SW
-	aes_enc_sw(state,cipher,ekey,block_size);
+	aes_enc_sw((uint8_t*)state,(uint8_t*)cipher,ekey,block_size);
 	TIME_STAMP_SW
 
 
 	for(x=0;x<16;x++){
-			printf(" %x", cipher[x]);
+			printf(" %x", (uint8_t)cipher[x]);
 	}
 	printf("\n");
 
