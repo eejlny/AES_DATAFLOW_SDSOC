@@ -1,6 +1,6 @@
 # AES_DATAFLOW_SDSOC
 
-Implements DATAFLOW between all the processing blocks of the AES encryption algorithm. The following results are based on SDSOC V2017.4. Part of the ENEAC EPSRC project at Bristol University.
+Implements the Advanced Encryption Standard (AES) using DATAFLOW between all the processing blocks of the AES encryption algorithm. The following results are based on SDSOC V2017.4. Part of the ENEAC EPSRC project at Bristol University.
 
 ZYNQ
 
